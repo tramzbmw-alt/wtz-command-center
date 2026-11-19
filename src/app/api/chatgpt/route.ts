@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { WTZ_SYSTEM_PROMPT } from "@/lib/systemPrompts";
 
 export async function POST(req: NextRequest) {
   const { prompt, systemPrompt } = await req.json();
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
       model: "gpt-4o",
       max_tokens: 1024,
       messages: [
-        ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+        { role: "system", content: systemPrompt ?? WTZ_SYSTEM_PROMPT },
         { role: "user", content: prompt },
       ],
     }),

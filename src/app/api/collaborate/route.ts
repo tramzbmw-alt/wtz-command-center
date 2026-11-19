@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const SYSTEM_PROMPT =
-  "You are a synthesis engine. You will be given a user question and two AI responses to it — one from Claude and one from ChatGPT. Your job is to produce a single unified recommendation that combines the best insights from both. Structure your response as: a short combined insight paragraph, then 4-6 key takeaways as short phrases. Format the takeaways as a JSON array at the end of your response wrapped in <takeaways>[\"takeaway 1\",\"takeaway 2\"]</takeaways> tags.";
+import { WTZ_SYNTHESIS_PROMPT } from "@/lib/systemPrompts";
 
 export async function POST(req: NextRequest) {
   const { prompt, claudeResponse, chatgptResponse } = await req.json();
@@ -36,7 +34,7 @@ ${chatgptResponse}`;
     body: JSON.stringify({
       model: "claude-sonnet-4-5",
       max_tokens: 1500,
-      system: SYSTEM_PROMPT,
+      system: WTZ_SYNTHESIS_PROMPT,
       messages: [{ role: "user", content: userMessage }],
     }),
   });
