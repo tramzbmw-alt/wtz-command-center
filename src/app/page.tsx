@@ -71,18 +71,42 @@ type CollaborateState =
 const IDLE: ResponseState = { status: "idle" };
 const COLLAB_IDLE: CollaborateState = { status: "idle" };
 
+function applyInline(s: string): string {
+  return s
+    .replace(/\*\*([\s\S]+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*\n]+?)\*/g, "<em>$1</em>")
+    .replace(/`([^`\n]+?)`/g, "<code>$1</code>");
+}
+
 function renderMarkdown(text: string): string {
-  return (
-    text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\*\*([\s\S]+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*([^*\n]+?)\*/g, "<em>$1</em>")
-      .replace(/`([^`\n]+?)`/g, "<code>$1</code>")
-      .replace(/\n\n/g, "<br><br>")
-      .replace(/\n/g, "<br>")
-  );
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const lines = escaped.split("\n");
+  const out: string[] = [];
+  let inList = false;
+  for (const line of lines) {
+    if (line.startsWith("### ")) {
+      if (inList) { out.push("</ul>"); inList = false; }
+      out.push(`<h4>${applyInline(line.slice(4))}</h4>`);
+    } else if (line.startsWith("## ")) {
+      if (inList) { out.push("</ul>"); inList = false; }
+      out.push(`<h3>${applyInline(line.slice(3))}</h3>`);
+    } else if (line.startsWith("- ")) {
+      if (!inList) { out.push("<ul>"); inList = true; }
+      out.push(`<li>${applyInline(line.slice(2))}</li>`);
+    } else if (line === "") {
+      if (inList) { out.push("</ul>"); inList = false; }
+      out.push("<br>");
+    } else {
+      if (inList) { out.push("</ul>"); inList = false; }
+      out.push(applyInline(line) + "<br>");
+    }
+  }
+  if (inList) out.push("</ul>");
+  const html = out.join("");
+  return html.endsWith("<br>") ? html.slice(0, -4) : html;
 }
 
 function cardBodyClass(r: ResponseState) {
@@ -506,7 +530,6 @@ export default function Home() {
                       <path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                     </svg>
                   </div>
-                  <span className="collab-title">Collaborated Answer</span>
                   <div className="collab-tags">
                     <span className="collab-tag claude-tag">Claude</span>
                     <span className="collab-tag chatgpt-tag">ChatGPT</span>

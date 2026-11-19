@@ -542,6 +542,35 @@ body {
   white-space: normal;
 }
 
+.response-body h3,
+.collab-body h3 {
+  font-size: 1em;
+  font-weight: 700;
+  color: var(--fg-primary);
+  margin: 0.7em 0 0.25em;
+  line-height: 1.3;
+}
+
+.response-body h4,
+.collab-body h4 {
+  font-size: 0.95em;
+  font-weight: 650;
+  color: var(--fg-primary);
+  margin: 0.5em 0 0.2em;
+  line-height: 1.3;
+}
+
+.response-body ul,
+.collab-body ul {
+  padding-left: 1.5em;
+  margin: 0.35em 0;
+}
+
+.response-body li,
+.collab-body li {
+  margin: 0.2em 0;
+}
+
 .response-body code {
   background: var(--bg-raised);
   border: 1px solid var(--border);
@@ -699,6 +728,7 @@ body {
 }
 
 .collab-takeaway {
+  display: inline-block;
   background: rgba(59, 130, 246, 0.1);
   border: 1px solid rgba(59, 130, 246, 0.25);
   color: var(--accent-blue-bright);
