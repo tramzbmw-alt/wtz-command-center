@@ -56,31 +56,31 @@ function ExpandIcon() {
   );
 }
 
-type Mode = "claude" | "chatgpt" | "compare";
+type Mode = "claude" | "chatgpt" | "compare" | "collaborate";
 
 type ResponseState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "done"; text: string; inputTokens: number; outputTokens: number };
 
+type CollaborateState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "done"; synthesis: string; takeaways: string[] };
+
 const IDLE: ResponseState = { status: "idle" };
+const COLLAB_IDLE: CollaborateState = { status: "idle" };
 
 function renderMarkdown(text: string): string {
   return (
     text
-      // Escape HTML entities first so raw user content can't inject tags
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
-      // Bold: **text**
       .replace(/\*\*([\s\S]+?)\*\*/g, "<strong>$1</strong>")
-      // Italic: *text*
       .replace(/\*([^*\n]+?)\*/g, "<em>$1</em>")
-      // Inline code: `code`
       .replace(/`([^`\n]+?)`/g, "<code>$1</code>")
-      // Double newline → paragraph gap
       .replace(/\n\n/g, "<br><br>")
-      // Single newline → line break
       .replace(/\n/g, "<br>")
   );
 }
@@ -108,17 +108,21 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("claude");
   const [claudeRes, setClaudeRes] = useState<ResponseState>(IDLE);
   const [chatgptRes, setChatgptRes] = useState<ResponseState>(IDLE);
+  const [collaborateRes, setCollaborateRes] = useState<CollaborateState>(COLLAB_IDLE);
   const [copiedClaude, setCopiedClaude] = useState(false);
   const [copiedChatgpt, setCopiedChatgpt] = useState(false);
 
   const isLoading =
-    claudeRes.status === "loading" || chatgptRes.status === "loading";
+    claudeRes.status === "loading" ||
+    chatgptRes.status === "loading" ||
+    collaborateRes.status === "loading";
 
   function switchMode(m: Mode) {
     if (m === mode) return;
     setMode(m);
     setClaudeRes(IDLE);
     setChatgptRes(IDLE);
+    setCollaborateRes(COLLAB_IDLE);
   }
 
   async function fetchClaude(p: string): Promise<ResponseState> {
@@ -140,12 +144,7 @@ export default function Home() {
         outputTokens: data.usage?.output_tokens ?? 0,
       };
     } catch (e) {
-      return {
-        status: "done",
-        text: `Error: ${(e as Error).message}`,
-        inputTokens: 0,
-        outputTokens: 0,
-      };
+      return { status: "done", text: `Error: ${(e as Error).message}`, inputTokens: 0, outputTokens: 0 };
     }
   }
 
@@ -168,12 +167,33 @@ export default function Home() {
         outputTokens: data.usage?.output ?? 0,
       };
     } catch (e) {
-      return {
-        status: "done",
-        text: `Error: ${(e as Error).message}`,
-        inputTokens: 0,
-        outputTokens: 0,
-      };
+      return { status: "done", text: `Error: ${(e as Error).message}`, inputTokens: 0, outputTokens: 0 };
+    }
+  }
+
+  async function fetchCollaborate(
+    p: string,
+    claudeText: string,
+    chatgptText: string
+  ): Promise<CollaborateState> {
+    try {
+      const res = await fetch("/api/collaborate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: p,
+          claudeResponse: claudeText,
+          chatgptResponse: chatgptText,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      return { status: "done", synthesis: data.synthesis, takeaways: data.takeaways ?? [] };
+    } catch (e) {
+      return { status: "done", synthesis: `Error: ${(e as Error).message}`, takeaways: [] };
     }
   }
 
@@ -186,16 +206,30 @@ export default function Home() {
     } else if (mode === "chatgpt") {
       setChatgptRes({ status: "loading" });
       setChatgptRes(await fetchChatGPT(prompt));
-    } else {
-      // compare — fire both in parallel
+    } else if (mode === "compare") {
       setClaudeRes({ status: "loading" });
       setChatgptRes({ status: "loading" });
-      const [c, g] = await Promise.all([
-        fetchClaude(prompt),
-        fetchChatGPT(prompt),
-      ]);
+      const [c, g] = await Promise.all([fetchClaude(prompt), fetchChatGPT(prompt)]);
       setClaudeRes(c);
       setChatgptRes(g);
+    } else {
+      // collaborate — phase 1: both models in parallel
+      setClaudeRes({ status: "loading" });
+      setChatgptRes({ status: "loading" });
+      setCollaborateRes(COLLAB_IDLE);
+      const [c, g] = await Promise.all([fetchClaude(prompt), fetchChatGPT(prompt)]);
+      setClaudeRes(c);
+      setChatgptRes(g);
+      // phase 2: synthesize (skip if either errored)
+      if (
+        c.status === "done" &&
+        g.status === "done" &&
+        !c.text.startsWith("Error:") &&
+        !g.text.startsWith("Error:")
+      ) {
+        setCollaborateRes({ status: "loading" });
+        setCollaborateRes(await fetchCollaborate(prompt, c.text, g.text));
+      }
     }
   }
 
@@ -205,22 +239,26 @@ export default function Home() {
     setTimeout(() => setter(false), 1800);
   }
 
-  const btnText = isLoading
-    ? "Asking…"
-    : mode === "claude"
-    ? "Ask Claude"
-    : mode === "chatgpt"
-    ? "Ask ChatGPT"
-    : "Ask Both";
+  const btnText = (() => {
+    if (mode === "collaborate") {
+      if (claudeRes.status === "loading" || chatgptRes.status === "loading") return "Asking Both…";
+      if (collaborateRes.status === "loading") return "Synthesizing…";
+      return "Collaborate";
+    }
+    if (isLoading) return "Asking…";
+    if (mode === "claude") return "Ask Claude";
+    if (mode === "chatgpt") return "Ask ChatGPT";
+    return "Ask Both";
+  })();
 
-  const showClaude = mode === "claude" || mode === "compare";
-  const showChatgpt = mode === "chatgpt" || mode === "compare";
+  const showClaude = mode === "claude" || mode === "compare" || mode === "collaborate";
+  const showChatgpt = mode === "chatgpt" || mode === "compare" || mode === "collaborate";
+  const isSideBySide = mode === "compare" || mode === "collaborate";
 
   return (
     <div className="dashboard">
       {/* ── Sidebar ── */}
       <aside className="sidebar">
-        {/* Logo */}
         <div className="sidebar-logo">
           <div className="sidebar-logo-title">
             <span className="logo-wtz">WTz</span>
@@ -229,7 +267,6 @@ export default function Home() {
           <div className="sidebar-logo-accent" />
         </div>
 
-        {/* Nav */}
         <nav className="sidebar-nav">
           <div className="nav-section-label">Main</div>
           <div className="nav-item active" role="menuitem" aria-current="page">
@@ -267,11 +304,7 @@ export default function Home() {
           <div className="nav-item" role="menuitem">
             <NavIcon d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
             Connectors
-            <span
-              className="status-dot green"
-              style={{ marginLeft: "auto" }}
-              title="Connected"
-            />
+            <span className="status-dot green" style={{ marginLeft: "auto" }} title="Connected" />
           </div>
           <div className="nav-item" role="menuitem">
             <NavIcon d="M9.594 3.89c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456A1.125 1.125 0 0 1 2.95 18.44l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827A1.125 1.125 0 0 1 1.653 9.4l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
@@ -289,18 +322,9 @@ export default function Home() {
                 <div className="model-name">Claude</div>
                 <div className="model-provider">Anthropic</div>
               </div>
-              <svg
-                className="model-check"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-label="Connected"
-              >
+              <svg className="model-check" width="16" height="16" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2.5"
+                strokeLinecap="round" strokeLinejoin="round" aria-label="Connected">
                 <path d="M4.5 12.75l6 6 9-13.5" />
               </svg>
             </div>
@@ -310,18 +334,9 @@ export default function Home() {
                 <div className="model-name">ChatGPT</div>
                 <div className="model-provider">OpenAI</div>
               </div>
-              <svg
-                className="model-check"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-label="Connected"
-              >
+              <svg className="model-check" width="16" height="16" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" strokeWidth="2.5"
+                strokeLinecap="round" strokeLinejoin="round" aria-label="Connected">
                 <path d="M4.5 12.75l6 6 9-13.5" />
               </svg>
             </div>
@@ -331,20 +346,14 @@ export default function Home() {
 
       {/* ── Main Content ── */}
       <div className="main-content">
-        {/* Topbar */}
         <header className="topbar">
           <div>
             <div className="topbar-title">Ask, Compare, or Collaborate</div>
-            <div className="topbar-sub">
-              Route your prompt to the right AI — or all of them
-            </div>
+            <div className="topbar-sub">Route your prompt to the right AI — or all of them</div>
           </div>
-          <div className="avatar" title="Travis R.">
-            TR
-          </div>
+          <div className="avatar" title="Travis R.">TR</div>
         </header>
 
-        {/* Scrollable area */}
         <div className="content-scroll">
           {/* Prompt card */}
           <div className="prompt-card">
@@ -353,17 +362,11 @@ export default function Home() {
               placeholder="Ask anything… choose a mode below, then hit the button."
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleAsk();
-              }}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleAsk(); }}
               rows={4}
             />
             <div className="prompt-footer">
-              <button
-                className="btn-primary"
-                onClick={handleAsk}
-                disabled={!prompt.trim() || isLoading}
-              >
+              <button className="btn-primary" onClick={handleAsk} disabled={!prompt.trim() || isLoading}>
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M1.5 2l13 6-13 6V9.5L11 8 1.5 6.5V2z" />
                 </svg>
@@ -391,9 +394,8 @@ export default function Home() {
                 Claude Only
               </button>
               <button
-                className="mode-pill disabled"
-                disabled
-                title="Coming soon"
+                className={`mode-pill${mode === "collaborate" ? " active" : ""}`}
+                onClick={() => switchMode("collaborate")}
               >
                 <PillIcon d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
                 Collaborate Both
@@ -411,9 +413,8 @@ export default function Home() {
           {/* AI Responses */}
           <div>
             <div className="section-heading">AI Responses</div>
-            <div className={`responses-grid${mode === "compare" ? " compare" : ""}`}>
+            <div className={`responses-grid${isSideBySide ? " compare" : ""}`}>
 
-              {/* Claude card */}
               {showClaude && (
                 <div className="response-card">
                   <div className="response-card-header">
@@ -425,19 +426,11 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="response-card-actions">
-                      <button
-                        className="icon-btn"
-                        title="Copy response"
-                        onClick={() =>
-                          claudeRes.status === "done" &&
-                          copyText(claudeRes.text, setCopiedClaude)
-                        }
-                      >
+                      <button className="icon-btn" title="Copy response"
+                        onClick={() => claudeRes.status === "done" && copyText(claudeRes.text, setCopiedClaude)}>
                         <CopyIcon />
                       </button>
-                      <button className="icon-btn" title="Expand">
-                        <ExpandIcon />
-                      </button>
+                      <button className="icon-btn" title="Expand"><ExpandIcon /></button>
                     </div>
                   </div>
                   <div
@@ -450,13 +443,8 @@ export default function Home() {
                   />
                   <div className="response-footer">
                     <span className="token-count">{tokenLabel(claudeRes)}</span>
-                    <button
-                      className="btn-copy"
-                      onClick={() =>
-                        claudeRes.status === "done" &&
-                        copyText(claudeRes.text, setCopiedClaude)
-                      }
-                    >
+                    <button className="btn-copy"
+                      onClick={() => claudeRes.status === "done" && copyText(claudeRes.text, setCopiedClaude)}>
                       <CopyIcon size={12} />
                       {copiedClaude ? "Copied!" : "Copy"}
                     </button>
@@ -464,7 +452,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* ChatGPT card */}
               {showChatgpt && (
                 <div className="response-card">
                   <div className="response-card-header">
@@ -476,19 +463,11 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="response-card-actions">
-                      <button
-                        className="icon-btn"
-                        title="Copy response"
-                        onClick={() =>
-                          chatgptRes.status === "done" &&
-                          copyText(chatgptRes.text, setCopiedChatgpt)
-                        }
-                      >
+                      <button className="icon-btn" title="Copy response"
+                        onClick={() => chatgptRes.status === "done" && copyText(chatgptRes.text, setCopiedChatgpt)}>
                         <CopyIcon />
                       </button>
-                      <button className="icon-btn" title="Expand">
-                        <ExpandIcon />
-                      </button>
+                      <button className="icon-btn" title="Expand"><ExpandIcon /></button>
                     </div>
                   </div>
                   <div
@@ -501,13 +480,8 @@ export default function Home() {
                   />
                   <div className="response-footer">
                     <span className="token-count">{tokenLabel(chatgptRes)}</span>
-                    <button
-                      className="btn-copy"
-                      onClick={() =>
-                        chatgptRes.status === "done" &&
-                        copyText(chatgptRes.text, setCopiedChatgpt)
-                      }
-                    >
+                    <button className="btn-copy"
+                      onClick={() => chatgptRes.status === "done" && copyText(chatgptRes.text, setCopiedChatgpt)}>
                       <CopyIcon size={12} />
                       {copiedChatgpt ? "Copied!" : "Copy"}
                     </button>
@@ -518,7 +492,52 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Collaborated Answer — hidden for now */}
+          {/* Collaborated Answer — only in collaborate mode */}
+          {mode === "collaborate" && collaborateRes.status !== "idle" && (
+            <div>
+              <div className="section-heading">Collaborated Answer</div>
+              <div className="collab-card">
+                {/* Header */}
+                <div className="collab-header">
+                  <div className="collab-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="1.75"
+                      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                    </svg>
+                  </div>
+                  <span className="collab-title">Collaborated Answer</span>
+                  <div className="collab-tags">
+                    <span className="collab-tag claude-tag">Claude</span>
+                    <span className="collab-tag chatgpt-tag">ChatGPT</span>
+                  </div>
+                </div>
+
+                {/* Body */}
+                {collaborateRes.status === "loading" ? (
+                  <div className="collab-body loading">Synthesizing responses…</div>
+                ) : (
+                  <>
+                    <div
+                      className="collab-body"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(collaborateRes.synthesis) }}
+                    />
+                    {collaborateRes.takeaways.length > 0 && (
+                      <div className="collab-takeaways-section">
+                        <div className="collab-takeaways-label">Key Takeaways</div>
+                        <div className="collab-takeaways">
+                          {collaborateRes.takeaways.map((t, i) => (
+                            <span key={i} className="collab-takeaway">{t}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>

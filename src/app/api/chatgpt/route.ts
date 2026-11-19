@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
-  const { prompt } = await req.json();
+  const { prompt, systemPrompt } = await req.json();
 
   if (!prompt || typeof prompt !== "string") {
     return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
@@ -24,7 +24,10 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       model: "gpt-4o",
       max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
+      messages: [
+        ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+        { role: "user", content: prompt },
+      ],
     }),
   });
 

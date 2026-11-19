@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
-  const { prompt } = await req.json();
+  const { prompt, systemPrompt } = await req.json();
 
   if (!prompt || typeof prompt !== "string") {
     return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       model: "claude-sonnet-4-5",
       max_tokens: 1024,
+      ...(systemPrompt ? { system: systemPrompt } : {}),
       messages: [{ role: "user", content: prompt }],
     }),
   });
