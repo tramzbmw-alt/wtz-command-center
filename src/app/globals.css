@@ -406,9 +406,9 @@ body {
 }
 
 .mode-pill.active {
-  background: var(--accent-blue-glow);
+  background: var(--accent-blue);
   border-color: var(--accent-blue);
-  color: var(--accent-blue-bright);
+  color: #ffffff;
 }
 
 .mode-pill.disabled {
@@ -462,6 +462,25 @@ body {
   background: rgba(192, 132, 252, 0.15);
   color: var(--claude);
   border: 1px solid rgba(192, 132, 252, 0.25);
+}
+
+.response-badge.chatgpt {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--chatgpt);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.responses-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.responses-grid.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
 }
 
 .response-model-name {
@@ -520,6 +539,26 @@ body {
 
 .response-body.has-content {
   color: var(--fg-primary);
+  white-space: normal;
+}
+
+.response-body code {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  color: var(--accent-blue-bright);
+}
+
+.response-body strong {
+  color: var(--fg-primary);
+  font-weight: 650;
+}
+
+.response-body em {
+  color: var(--fg-secondary);
 }
 
 @keyframes pulse-text {
