@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 function NavIcon({ d, d2 }: { d: string; d2?: string }) {
   return (
@@ -57,6 +57,7 @@ function ExpandIcon() {
 }
 
 type Mode = "claude" | "chatgpt" | "compare" | "collaborate";
+type McpStatus = "loading" | "ok" | "degraded" | "down";
 
 type ResponseState =
   | { status: "idle" }
@@ -127,9 +128,29 @@ function tokenLabel(r: ResponseState) {
   return "— tokens";
 }
 
+function mcpDotClass(s: McpStatus) {
+  if (s === "ok") return "green";
+  if (s === "degraded") return "yellow";
+  if (s === "down") return "red";
+  return "gray";
+}
+
 export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<Mode>("claude");
+  const [mcpStatus, setMcpStatus] = useState<McpStatus>("loading");
+  const [mcpProjects, setMcpProjects] = useState<string[]>([]);
+  const [dataSourcesOpen, setDataSourcesOpen] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/mcp-status")
+      .then((r) => r.json())
+      .then((d) => {
+        setMcpStatus(d.status ?? "down");
+        setMcpProjects(d.projects ?? []);
+      })
+      .catch(() => setMcpStatus("down"));
+  }, []);
   const [claudeRes, setClaudeRes] = useState<ResponseState>(IDLE);
   const [chatgptRes, setChatgptRes] = useState<ResponseState>(IDLE);
   const [collaborateRes, setCollaborateRes] = useState<CollaborateState>(COLLAB_IDLE);
@@ -325,11 +346,54 @@ export default function Home() {
           </div>
 
           <div className="nav-section-label">System</div>
-          <div className="nav-item" role="menuitem">
+          <div
+            className="nav-item"
+            role="menuitem"
+            aria-expanded={dataSourcesOpen}
+            onClick={() => setDataSourcesOpen((o) => !o)}
+          >
             <NavIcon d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
-            Connectors
-            <span className="status-dot green" style={{ marginLeft: "auto" }} title="Connected" />
+            Data Sources
+            <span
+              className={`status-dot ${mcpDotClass(mcpStatus)}`}
+              style={{ marginLeft: "auto" }}
+              title={mcpStatus}
+            />
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="currentColor"
+              style={{
+                flexShrink: 0,
+                opacity: 0.5,
+                transform: dataSourcesOpen ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.15s",
+              }}
+              aria-hidden="true"
+            >
+              <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none"
+                strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </div>
+          {dataSourcesOpen && (
+            <div className="ds-panel">
+              <div className="ds-row">
+                <span className={`status-dot ${mcpDotClass(mcpStatus)}`} />
+                <span className="ds-row-name">WTz MCP</span>
+                <span className={`ds-row-badge ${mcpDotClass(mcpStatus)}`}>{mcpStatus}</span>
+              </div>
+              {mcpProjects.map((p) => (
+                <div className="ds-row" key={p}>
+                  <span className="status-dot gray" />
+                  <span className="ds-row-name">{p}</span>
+                </div>
+              ))}
+              {mcpStatus !== "loading" && mcpProjects.length === 0 && (
+                <div className="ds-empty">No projects found</div>
+              )}
+            </div>
+          )}
           <div className="nav-item" role="menuitem">
             <NavIcon d="M9.594 3.89c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456A1.125 1.125 0 0 1 2.95 18.44l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827A1.125 1.125 0 0 1 1.653 9.4l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
             Settings
