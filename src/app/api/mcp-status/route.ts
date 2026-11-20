@@ -32,8 +32,8 @@ function extractProjects(text: string): string[] {
   } catch {
     // not JSON
   }
-  // extract all double-quoted strings as a last resort
-  const quoted = [...trimmed.matchAll(/"([^"\\]+)"/g)].map((m) => m[1]);
+  // extract quoted string values only — negative lookahead skips JSON keys ("key":)
+  const quoted = [...trimmed.matchAll(/"([^"\\]+)"(?!\s*:)/g)].map((m) => m[1]);
   if (quoted.length > 0) return quoted.filter(Boolean);
   // plain text fallback: split on newlines
   return trimmed.split("\n").map((s) => s.trim()).filter(Boolean);
