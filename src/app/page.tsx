@@ -128,11 +128,19 @@ function tokenLabel(r: ResponseState) {
   return "— tokens";
 }
 
-function mcpDotClass(s: McpStatus) {
-  if (s === "ok") return "green";
-  if (s === "degraded") return "yellow";
-  if (s === "down") return "red";
-  return "gray";
+function mcpStatusColor(s: McpStatus): string {
+  if (s === "ok") return "#22c55e";
+  if (s === "degraded") return "#eab308";
+  if (s === "down") return "#ef4444";
+  return "#555e75";
+}
+
+function mcpDotStyle(s: McpStatus): React.CSSProperties {
+  const color = mcpStatusColor(s);
+  return {
+    background: color,
+    boxShadow: s !== "loading" ? `0 0 6px ${color}99` : undefined,
+  };
 }
 
 export default function Home() {
@@ -355,8 +363,8 @@ export default function Home() {
             <NavIcon d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
             Data Sources
             <span
-              className={`status-dot ${mcpDotClass(mcpStatus)}`}
-              style={{ marginLeft: "auto" }}
+              className="status-dot"
+              style={{ marginLeft: "auto", ...mcpDotStyle(mcpStatus) }}
               title={mcpStatus}
             />
             <svg
@@ -379,9 +387,9 @@ export default function Home() {
           {dataSourcesOpen && (
             <div className="ds-panel">
               <div className="ds-row">
-                <span className={`status-dot ${mcpDotClass(mcpStatus)}`} />
+                <span className="status-dot" style={mcpDotStyle(mcpStatus)} />
                 <span className="ds-row-name">WTz MCP</span>
-                <span className={`ds-row-badge ${mcpDotClass(mcpStatus)}`}>{mcpStatus}</span>
+                <span className="ds-row-badge" style={{ color: mcpStatusColor(mcpStatus) }}>{mcpStatus}</span>
               </div>
               {mcpProjects.map((p) => (
                 <div className="ds-row" key={p}>
