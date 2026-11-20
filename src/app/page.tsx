@@ -58,6 +58,7 @@ function ExpandIcon() {
 
 type Mode = "claude" | "chatgpt" | "compare" | "collaborate";
 type McpStatus = "loading" | "ok" | "degraded" | "down";
+type ProjectHealth = { name: string; status: "ok" | "error" };
 
 type ResponseState =
   | { status: "idle" }
@@ -147,7 +148,7 @@ export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<Mode>("claude");
   const [mcpStatus, setMcpStatus] = useState<McpStatus>("loading");
-  const [mcpProjects, setMcpProjects] = useState<string[]>([]);
+  const [mcpProjects, setMcpProjects] = useState<ProjectHealth[]>([]);
   const [dataSourcesOpen, setDataSourcesOpen] = useState(false);
 
   useEffect(() => {
@@ -392,9 +393,16 @@ export default function Home() {
                 <span className="ds-row-badge" style={{ color: mcpStatusColor(mcpStatus) }}>{mcpStatus}</span>
               </div>
               {mcpProjects.map((p) => (
-                <div className="ds-row" key={p}>
-                  <span className="status-dot gray" />
-                  <span className="ds-row-name">{p}</span>
+                <div className="ds-row" key={p.name}>
+                  <span
+                    className="status-dot"
+                    style={{
+                      background: p.status === "ok" ? "#22c55e" : "#ef4444",
+                      boxShadow: `0 0 6px ${p.status === "ok" ? "#22c55e" : "#ef4444"}99`,
+                    }}
+                    title={p.status}
+                  />
+                  <span className="ds-row-name">{p.name}</span>
                 </div>
               ))}
               {mcpStatus !== "loading" && mcpProjects.length === 0 && (
