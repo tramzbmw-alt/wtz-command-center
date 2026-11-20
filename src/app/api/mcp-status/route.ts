@@ -42,13 +42,26 @@ function extractProjects(text: string): string[] {
 export async function GET() {
   try {
     const result = await callTool("list_projects", {});
-    const text = result?.content?.[0]?.text ?? "";
-    const projects = text ? extractProjects(text) : [];
+
+    // Join all text content items — handles chunked/streaming MCP responses
+    const text =
+      result?.content
+        ?.filter((c) => c.type === "text" && typeof c.text === "string")
+        .map((c) => c.text as string)
+        .join("") ?? "";
+
+    let projects: string[] = [];
+    if (text) {
+      projects = extractProjects(text);
+    } else if (result) {
+      // No content[].text — try walking the result object directly
+      const found = firstStringArray(result);
+      if (found) projects = found.filter(Boolean);
+    }
+
     const status = projects.length > 0 ? "ok" : "degraded";
     return NextResponse.json({ status, projects });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const status = msg.includes("401") || msg.includes("403") ? "down" : "down";
-    return NextResponse.json({ status, projects: [] });
+  } catch {
+    return NextResponse.json({ status: "down", projects: [] });
   }
 }
