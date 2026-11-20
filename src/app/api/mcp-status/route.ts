@@ -20,23 +20,48 @@ function firstStringArray(val: unknown): string[] | null {
   return null;
 }
 
+function looksLikeProjectName(s: string): boolean {
+  const t = s.trim();
+  if (!t) return false;
+  // reject JSON structural fragments like ": [", "  ]", etc.
+  if (/^[\s:[\]{},]+$/.test(t)) return false;
+  if (/^[:[{\]},\n]/.test(t)) return false;
+  return true;
+}
+
 function extractProjects(text: string): string[] {
   const trimmed = text.trim();
+
+  // Try parsing the full text as JSON first
   try {
     const parsed = JSON.parse(trimmed);
     const found = firstStringArray(parsed);
-    if (found) return found.filter(Boolean);
-    // parsed but no string arrays — treat as a single name if it's a plain string
-    if (typeof parsed === "string" && parsed) return [parsed];
-    // JSON parsed with no usable data — fall through to regex
+    if (found) return found.filter(looksLikeProjectName);
+    if (typeof parsed === "string" && looksLikeProjectName(parsed)) return [parsed];
   } catch {
-    // not JSON
+    // not valid JSON as-is
   }
-  // extract quoted string values only — negative lookahead skips JSON keys ("key":)
-  const quoted = [...trimmed.matchAll(/"([^"\\]+)"(?!\s*:)/g)].map((m) => m[1]);
-  if (quoted.length > 0) return quoted.filter(Boolean);
-  // plain text fallback: split on newlines
-  return trimmed.split("\n").map((s) => s.trim()).filter(Boolean);
+
+  // If the text has a JSON prefix garbage, try starting from the first { or [
+  const jsonStart = trimmed.search(/[{[]/);
+  if (jsonStart > 0) {
+    try {
+      const parsed = JSON.parse(trimmed.slice(jsonStart));
+      const found = firstStringArray(parsed);
+      if (found) return found.filter(looksLikeProjectName);
+    } catch {
+      // still not valid
+    }
+  }
+
+  // Extract quoted string values — skip JSON keys (followed by :)
+  const quoted = [...trimmed.matchAll(/"([^"\\]+)"(?!\s*:)/g)]
+    .map((m) => m[1])
+    .filter(looksLikeProjectName);
+  if (quoted.length > 0) return quoted;
+
+  // Plain text fallback: split on newlines
+  return trimmed.split("\n").map((s) => s.trim()).filter(looksLikeProjectName);
 }
 
 export async function GET() {

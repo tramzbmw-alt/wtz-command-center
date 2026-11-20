@@ -11,17 +11,20 @@ export interface McpResult {
 }
 
 async function parseSseStream(res: Response): Promise<McpResult> {
-  const text = await res.text();
-  const lines = text.split("\n").reverse();
-  for (const line of lines) {
+  const raw = await res.text();
+  // Collect content chunks from every result event — the stream may be chunked
+  const allContent: McpContent[] = [];
+  for (const line of raw.split("\n")) {
     if (!line.startsWith("data: ")) continue;
     try {
       const json = JSON.parse(line.slice(6));
-      if (json.result) return json.result as McpResult;
+      const chunks = json.result?.content;
+      if (Array.isArray(chunks)) allContent.push(...chunks);
     } catch {
       // skip malformed SSE lines
     }
   }
+  if (allContent.length > 0) return { content: allContent };
   throw new Error("No result found in SSE stream");
 }
 
