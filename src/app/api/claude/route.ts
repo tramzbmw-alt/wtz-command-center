@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { WTZ_SYSTEM_PROMPT } from "@/lib/systemPrompts";
+import { fetchMcpContext } from "@/lib/mcpTools";
 
 export async function POST(req: NextRequest) {
   const { prompt, systemPrompt } = await req.json();
@@ -7,6 +8,10 @@ export async function POST(req: NextRequest) {
   if (!prompt || typeof prompt !== "string") {
     return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
   }
+
+  const mcpContext = await fetchMcpContext(prompt);
+  const baseSystem = systemPrompt ?? WTZ_SYSTEM_PROMPT;
+  const finalSystem = mcpContext ? baseSystem + "\n\n" + mcpContext : baseSystem;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || apiKey === "your_key_here") {
@@ -26,7 +31,7 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       model: "claude-sonnet-4-5",
       max_tokens: 1024,
-      system: systemPrompt ?? WTZ_SYSTEM_PROMPT,
+      system: finalSystem,
       messages: [{ role: "user", content: prompt }],
     }),
   });

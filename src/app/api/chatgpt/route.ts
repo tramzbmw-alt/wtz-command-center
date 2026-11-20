@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { WTZ_SYSTEM_PROMPT } from "@/lib/systemPrompts";
+import { fetchMcpContext } from "@/lib/mcpTools";
 
 export async function POST(req: NextRequest) {
   const { prompt, systemPrompt } = await req.json();
@@ -7,6 +8,10 @@ export async function POST(req: NextRequest) {
   if (!prompt || typeof prompt !== "string") {
     return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
   }
+
+  const mcpContext = await fetchMcpContext(prompt);
+  const baseSystem = systemPrompt ?? WTZ_SYSTEM_PROMPT;
+  const finalSystem = mcpContext ? baseSystem + "\n\n" + mcpContext : baseSystem;
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -26,7 +31,7 @@ export async function POST(req: NextRequest) {
       model: "gpt-4o",
       max_tokens: 1024,
       messages: [
-        { role: "system", content: systemPrompt ?? WTZ_SYSTEM_PROMPT },
+        { role: "system", content: finalSystem },
         { role: "user", content: prompt },
       ],
     }),
